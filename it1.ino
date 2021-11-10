@@ -71,7 +71,7 @@ String bottom = hours + hourVar;
 
 //time variables
 long startTime = millis();
-long dayLength = 60;
+long dayLength = 24;
 
 //led variables
 //this is to test the time functions and opening and closing time
@@ -81,7 +81,10 @@ int redLED = 6;
 //temperature values
 int temp = 0;
 int timeOpen = 0;
+int curOpen = 0;
 int previousDay = 0;
+bool nextStage = false;
+float sTime =0;
 
 
 //////////////////////////////////////////////////////////////
@@ -107,6 +110,9 @@ void setup() {
   pinMode(upBtn, INPUT);
   pinMode(downBtn, INPUT);
   
+  //Serial setup for testing
+  Serial.begin(9600);
+  
   
   //time setup
   
@@ -115,7 +121,8 @@ void setup() {
   pinMode(redLED, OUTPUT);
   
   //setup the simulation representative
-  closed();
+  close();
+  
   
   
   
@@ -123,90 +130,105 @@ void setup() {
 
 
 void loop() {
-  //redundancy is good
-  if(day > 7)day = 1;
-  if(day < 0) day = 7;
+  Serial.print(moveOn());
+  Serial.println(digitalRead(redLED));
+  if(!moveOn()){
   
-  //check state of the buttons
-  readStates();
-  
-  
-  
-  //check left button
-  if(leftState == HIGH){
-    //lcd.clear();
-    //set the cursor to the top line
-    lcd.setCursor(0,0);
+    //redundancy is good
+    if(day > 7)day = 1;
+    if(day < 0) day = 7;
     
-    day--;
-    if(day == 0){
+    //check state of the buttons
+    readStates();
+    
+    
+    
+    //check left button
+    if(leftState == HIGH){
+      //lcd.clear();
+      //set the cursor to the top line
+      lcd.setCursor(0,0);
+      
+      day--;
+      if(day == 0){
+        tempOut(temp);
+      }else if(day < 0) {
+        day = 7;
+        //print out what we want
+        outLCD();
+      }else{
+        outLCD();
+      }
+      
+      
+      
+    }
+    
+    
+    //check right button
+    if(rightState == HIGH){
+      //lcd.clear();
+      lcd.setCursor(0,0);
+      
+      day++;
+      if(day > 7){
+          day = 0;
+          //reset the str variables for printing
+      }
+      if(day == 0){
       tempOut(temp);
-    }else if(day < 0) {
-    	day = 7;
-    	//print out what we want
-    	outLCD();
-    }else{
-      outLCD();
-    }
+      }else{
+        outLCD();
+      }
+      
+      
     
-    
-    
-  }
-  
-  
-  //check right button
-  if(rightState == HIGH){
-    //lcd.clear();
-    lcd.setCursor(0,0);
-    
-    day++;
-   	if(day > 7){
-       	day = 0;
-      	//reset the str variables for printing
-    }
-    if(day == 0){
-     tempOut(temp);
-    }else{
-      outLCD();
-    }
-    
-    
-   
 
-  }
-  
-  
-  //check up button
-  if(upState == HIGH){
- 
-    if(day != 0){
-    	days[day - 1] ++;
-    	if(days[day - 1] > 24)days[day - 1] =24;
-    	outLCD();
-    }else{
-      temp++;
-      tempOut(temp);
     }
     
-  }
+    
+    //check up button
+    if(upState == HIGH){
   
-  
-  //check down button
-  if(downState == HIGH){
-    if(day != 0){
-    	days[day - 1] --;
-    	if(days[day - 1] < 0)days[day - 1] =0;
-   
-    	outLCD();
-    }else{
-    	temp--;
-      	tempOut(temp);
+      if(day != 0){
+        days[day - 1] ++;
+        if(days[day - 1] > 24)days[day - 1] =24;
+        outLCD();
+      }else{
+        temp++;
+        tempOut(temp);
+      }
+      
     }
     
+    
+    //check down button
+    if(downState == HIGH){
+      if(day != 0){
+        days[day - 1] --;
+        if(days[day - 1] < 0)days[day - 1] =0;
+    
+        outLCD();
+      }else{
+        temp--;
+          tempOut(temp);
+      }
+      
+    }
+    delay(250);
+  }else{
+    progLCD();
+    Serial.println("Second loop");
+      if(shouldBeOpen(previousDay)){
+        Serial.println("Were in the inside");
+        doWork();
+      }else{
+    	Serial.println("We didn't get inside");
+      }
   }
   
   //delay at the end of loop
-  delay(250);
+  
   
   //timeChecker();
   
@@ -272,17 +294,38 @@ void readStates(){
   	downState = digitalRead(downBtn);
 }
 
-//function that checks time and determines if we still need sunlight
+//function that checks time and determines if we still need sunlight. Takes timeOpen as a parameter
 void timeChecker(bool state, int openTime){
   long currentTime = millis();
   long totalElapsed = (currentTime - startTime)/1000;
 }
 
 //returns whether or not the system should be open
-bool shouldBeOpen(int openTime){
-  if(openTime < days[day]){
+bool shouldBeOpen(int pDay){
+  if(previousDay > 7)return true;
+  
+  int currentDay = getDay();
+  if(currentDay != pDay){
+    timeOpen = 0;
+    previousDay = currentDay;
+  }
+  
+  
+  Serial.print("Current Day: ");
+  Serial.println(currentDay);
+  
+  
+  Serial.print("opent time: ");
+  Serial.print(timeOpen);
+  Serial.println("//////");
+
+  Serial.print("day time: ");
+  Serial.print(days[currentDay-1]);
+  Serial.println("//////");
+  if(timeOpen <= days[currentDay-1]){
     return true;
   }
+  close();
   return false;
 }
 
@@ -302,9 +345,10 @@ void open(){
 
 //function that simulates a closed orientation with the
 //shadecloth over the plants, using LEDs
-void closed(){
+void close(){
   digitalWrite(redLED, HIGH);
   digitalWrite(greenLED, LOW);
+  Serial.println("Close was run");
 }
 
 //checks whether or not the current state is open
@@ -315,29 +359,71 @@ bool isOpen(){
 //function that tells us what day it is 1-7
 int getDay(){
 	int currentTime = (millis()- startTime)/1000;
-  	int day = (currentTime / 60) + 1;
+  	int day = (currentTime / dayLength) + 1;
   	return day;
 }
 
-void doWork(int pDay){
-    int currentDay = getDay();
-  	if(currentDay != pDay){
-    	timeOpen = 0;
-    }
-  	float sTime = millis();
+/**
+ * @brief method to actually open or close the system
+ * 
+ * 
+ * @param pDay passes the previous day that was used, should just be the instance variable previous day
+ */
+void doWork(){
+   
+  	// float sTime = millis();
+  	// curOpen = sTime;
     
-    
-
-    if(timeOpen < days[currentDay] && !isOpen()){
-        open();
-    }else{
+    if(timeOpen <= days[getDay()] &&!isOpen()){
+      open();
+      sTime = millis();
+  	  curOpen = sTime;
+      Serial.println("It was closed");
+    }else if (isOpen && timeOpen <= days[getDay()-1]){
+      Serial.println("fuck babby fuck");
+      //timeOpen += (millis() - curOpen)/1000;
+      timeOpen++;
+    }else if(timeOpen > days[getDay()-1]){ 
+        Serial.print(timeOpen);
         close(); //just put this to avoid error, not logical yet, need to check
+        //timeOpen += (millis() - curOpen)/1000;
+      	Serial.print("and I liked it");
+    }else{
+      Serial.print("This isn't working");
     }
+  	delay(900);
 
+
+}
+
+
+/**
+ * @brief This is the bool that determines if the programming is done
+ * 
+ * @return true 
+ * @return false 
+ */
+
+bool moveOn(){
+    if (upState == HIGH && rightState == HIGH){
+      /* code */
+      return true;
+    }
+    return false;
     
+}
 
-    
-
-
-
+//new output for function
+void progLCD(){
+	lcd.clear();
+  
+	f = "Done";
+    //print the new str
+    lcd.print(f);
+  
+  
+  	lcd.setCursor(0,1);
+  	
+	bottom = "Running...";
+  	lcd.print(bottom);
 }
